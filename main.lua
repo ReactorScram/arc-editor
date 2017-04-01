@@ -38,32 +38,34 @@ local function draw_arc (g, arc, color)
 	
 	g.setColor (color)
 	
-	if arc.params then
+	if arc.params and arc.stop.tangent then
 		local basis = tangent_to_basis (arc.start.tangent)
 		local points = tesselate_arc_basis (arc.start.pos, arc.params, basis)
 		
-		local ls = points
-		for i = 1, #ls - 1 do
-			local j = i + 1
-			
-			local a = ls [i]
-			local b = ls [j]
-			
-			g.line (a [1], a [2], b [1], b [2])
+		local function draw_polyline (ls)
+			for i = 1, #ls - 1 do
+				local j = i + 1
+				
+				local a = ls [i]
+				local b = ls [j]
+				
+				g.line (a [1], a [2], b [1], b [2])
+			end
 		end
 		
-		if arc.stop.tangent then
-			local pos = points [#points]
-			
-			g.setColor (255, 64, 64)
-			g.line (pos [1], pos [2], pos [1] + 16 * arc.stop.tangent [1], pos [2] + 16 * arc.stop.tangent [2])
-			
-			local basis = tangent_to_basis (arc.stop.tangent)
-			
-			local normal = from_basis ({0.0, 16.0}, basis)
-			
-			g.line (pos [1], pos [2], pos [1] + normal [1], pos [2] + normal [2])
-		end
+		draw_polyline (tesselate_arc_basis (arc.start.pos, arc.params, basis, -10))
+		draw_polyline (tesselate_arc_basis (arc.start.pos, arc.params, basis, 10))
+		
+		local pos = points [#points]
+		
+		g.setColor (255, 64, 64)
+		g.line (pos [1], pos [2], pos [1] + 16 * arc.stop.tangent [1], pos [2] + 16 * arc.stop.tangent [2])
+		
+		local basis = tangent_to_basis (arc.stop.tangent)
+		
+		local normal = from_basis ({0.0, 16.0}, basis)
+		
+		g.line (pos [1], pos [2], pos [1] + normal [1], pos [2] + normal [2])
 	end
 	
 	--g.setColor (64, 64, 64)
@@ -110,16 +112,17 @@ function bend_arc (mouse)
 	return tangent, arc_params
 end
 
-function tesselate_arc_basis (start, p, basis)
-	return lume.map (tesselate_arc (p), function (p)
+function tesselate_arc_basis (start, p, basis, offset)
+	return lume.map (tesselate_arc (p, offset), function (p)
 		local p2 = from_basis (p, basis)
 		return {p2 [1] + start [1], p2 [2] + start [2]}
 	end)
 end
 
-function tesselate_arc (p)
+function tesselate_arc (p, offset)
+	local offset = offset or 0.0
 	local lines = {
-		{0.0, 0.0},
+		{0.0, offset},
 	}
 	
 	local curvature = p.total_theta / p.length
@@ -132,7 +135,20 @@ function tesselate_arc (p)
 			last_point [1] + segment_length * math.cos (theta),
 			last_point [2] + segment_length * math.sin (theta),
 		}
-		table.insert (lines, point)
+		if offset == 0.0 then
+			table.insert (lines, point)
+		else
+			local normal_theta = theta + 0.5 * math.pi
+			local normal = {
+				offset * math.cos (normal_theta),
+				offset * math.sin (normal_theta),
+			}
+			
+			table.insert (lines, {
+				point [1] + normal [1],
+				point [2] + normal [2],
+			})
+		end
 		last_point = point
 	end
 	
