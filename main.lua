@@ -185,15 +185,25 @@ function love.draw ()
 			love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1] + 16.0, lastMouse [2])
 		end
 	elseif tool == "select" then
+		love.graphics.push ()
+		
+		if lastMouse [2] < 300 then
+			love.graphics.translate (0, 500)
+		else
+			love.graphics.translate (0, 60)
+		end
+		
 		love.graphics.setColor (64, 64, 64, 192)
-		love.graphics.rectangle ("fill", 0, 500, 800, 40)
+		love.graphics.rectangle ("fill", 0, 0, 800, 40)
 		
 		local help_text = table.concat (lume.map (tool_order, function (char)
 			return tools [char][2]
 		end), ", ")
 		
 		love.graphics.setColor (240, 240, 240, 255)
-		love.graphics.printf (help_text, 0, 515, 800, "center")
+		love.graphics.printf (help_text, 0, 15, 800, "center")
+		
+		love.graphics.pop ()
 	end
 end
 
