@@ -185,18 +185,42 @@ function love.draw ()
 		love.graphics.printf ("Click to start", 0, 300, 800, "center")
 		
 		love.graphics.setColor (255, 64, 64)
-		love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1], lastMouse [2])
+		love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1] + 16.0, lastMouse [2])
 	end
 end
 
 function love.mousemoved (x, y)
+	lastMouse = {x, y}
+end
+
+function love.update (dt)
+	local x, y = love.mouse.getPosition ()
+	
 	if arc then
+		local tangent = arc.start.tangent
+		
+		if #arcs == 0 then
+			tangent = {
+				x - arc.start.pos [1],
+				y - arc.start.pos [2],
+			}
+			
+			local theta = math.atan2 (tangent [2], tangent [1])
+			local theta_gran = 7.5
+			local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + theta_gran * 0.5) / theta_gran) * theta_gran) * math.pi / 180.0
+			
+			tangent = {
+				math.cos (snapped_theta),
+				math.sin (snapped_theta),
+			}
+		end
+		
+		arc.start.tangent = tangent
+		
 		local gran = 5.0 / 16.0
 		local rounded_curvature = math.floor ((arc.start.curvature - 0.5 * gran) / gran) * gran + 0.5 * gran
-		arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent), arc.start.curvature)
+		arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent), arc.start.curvature)
 	end
-	
-	lastMouse = {x, y}
 end
 
 function love.mousepressed (x, y)
