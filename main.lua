@@ -2,15 +2,36 @@ local arc = {
 	start = { 
 		pos = { 200.5, 300.5 },
 		tangent = { 1.0, 0.0 },
-		curvature = 0.0,
 	},
 	stop = { 
 		pos = { 600.5, 300.5 },
 		tangent = { 1.0, 0.0 },
-		curvature = 0.0,
 	},
 	lines = nil,
 }
+
+local arcs = {}
+
+local function tangent_to_basis (tangent)
+	return {
+		x = tangent,
+		y = {-tangent [2], tangent [1]},
+	}
+end
+
+local function into_basis (v, basis)
+	return {
+		v [1] * basis.x [1] + v [2] * basis.x [2],
+		v [1] * basis.y [1] + v [2] * basis.y [2],
+	}
+end
+
+local function from_basis (v, basis)
+	return {
+		v [1] * basis.x [1] + v [2] * basis.y [1],
+		v [1] * basis.x [2] + v [2] * basis.y [2],
+	}
+end
 
 local debug = { 0.0, 0.0 }
 
@@ -34,10 +55,21 @@ local function draw_arc (g, arc)
 			
 			g.line (a [1], a [2], b [1], b [2])
 		end
+		
+		if arc.stop.tangent then
+			g.setColor (255, 64, 64)
+			g.line (arc.stop.pos [1], arc.stop.pos [2], arc.stop.pos [1] + 16 * arc.stop.tangent [1], arc.stop.pos [2] + 16 * arc.stop.tangent [2])
+			
+			local basis = tangent_to_basis (arc.stop.tangent)
+			
+			local normal = from_basis ({0.0, 16.0}, basis)
+			
+			g.line (arc.stop.pos [1], arc.stop.pos [2], arc.stop.pos [1] + normal [1], arc.stop.pos [2] + normal [2])
+		end
 	end
 	
-	g.setColor (64, 64, 64)
-	g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
+	--g.setColor (64, 64, 64)
+	--g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
 end
 
 local function solve_circular_arc (start, stop)
@@ -100,13 +132,29 @@ local function solve_circular_arc (start, stop)
 	--return overall_normal
 end
 
+function bend_arc_basis (start, mouse, basis)
+	local local_mouse = into_basis ({mouse [1] - start [1], mouse [2] - start [2]}, basis)
+	
+	local a, b, c = bend_arc ({0, 0}, local_mouse)
+	
+	local lines = {}
+	for i, v in ipairs (c) do
+		local v = from_basis (v, basis)
+		lines [i] = {v [1] + start [1], v [2] + start [2]}
+	end
+	
+	local tangent = from_basis (a, basis)
+	
+	return tangent, b, lines
+end
+
 function bend_arc (start, mouse)
 	local theta = math.atan2 (mouse [2] - start [2], mouse [1] - start [1])
 	local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + 2.5) / 5.0) * 5.0) * math.pi / 180.0
 	
-	--[[
 	local radius = math.sqrt (math.pow (mouse [1] - start [1], 2.0) + math.pow (mouse [2] - start [2], 2.0))
 	
+	--[[
 	local snapped_mouse = {
 		radius * math.cos (snapped_theta) + start [1],
 		radius * math.sin (snapped_theta) + start [2],
@@ -117,11 +165,11 @@ function bend_arc (start, mouse)
 	
 	local num_segments = 16
 	
-	local arc_length = 256.0
+	local arc_length = radius
 	
 	local curvature = total_arc_theta / arc_length
 	if math.abs (curvature) < 0.0001 then
-		return nil, nil, {
+		return {1.0, 0.0}, nil, {
 			start,
 			{start [1] + arc_length, start [2]},
 		}
@@ -144,15 +192,14 @@ function bend_arc (start, mouse)
 			})
 		end
 		
-		return nil, nil, lines
+		return {math.cos (total_arc_theta), math.sin (total_arc_theta)}, nil, lines
 	end
-	
-	return nil, nil, {
-		start,
-	}
 end
 
 function love.draw ()
+	for _, arc in ipairs (arcs) do
+		draw_arc (love.graphics, arc)
+	end
 	draw_arc (love.graphics, arc)
 	--love.graphics.line (debug [1], debug [2], arc.start.pos [1], arc.start.pos [2])
 end
@@ -161,5 +208,23 @@ function love.mousemoved (x, y)
 	--arc.stop.pos = { x, y }
 	
 	--arc.lines = solve_circular_arc (arc.start.pos, arc.stop.pos)
-	arc.stop.tangent, debug, arc.lines = bend_arc (arc.start.pos, {x, y})
+	arc.stop.tangent, debug, arc.lines = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent))
+	arc.stop.pos = arc.lines [#arc.lines]
+end
+
+function love.mousepressed ()
+	local old_arc = arc
+	table.insert (arcs, arc)
+	
+	arc = {
+		start = {
+			pos = old_arc.stop.pos,
+			tangent = old_arc.stop.tangent,
+		},
+		stop = {
+			pos = old_arc.stop.pos,
+			tangent = old_arc.stop.tangent,
+		},
+		lines = nil,
+	}
 end
