@@ -95,7 +95,8 @@ end
 
 function bend_arc (mouse, start_curvature)
 	local theta = math.atan2 (mouse [2], mouse [1])
-	local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + 2.5) / 5.0) * 5.0) * math.pi / 180.0
+	local theta_gran = 7.5
+	local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + theta_gran * 0.5) / theta_gran) * theta_gran) * math.pi / 180.0
 	
 	local radius = math.sqrt (math.pow (mouse [1], 2.0) + math.pow (mouse [2], 2.0))
 	
