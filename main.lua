@@ -1,16 +1,10 @@
-local arc = {
-	start = { 
-		pos = { 200.5, 300.5 },
-		tangent = { 1.0, 0.0 },
-	},
-	stop = { 
-		pos = { 600.5, 300.5 },
-		tangent = { 1.0, 0.0 },
-	},
-	lines = nil,
-}
+local arc = nil
 
 local arcs = {}
+
+local lastMouse = {0, -16}
+
+local track_radius = 10
 
 local function tangent_to_basis (tangent)
 	return {
@@ -35,8 +29,14 @@ end
 
 local debug = { 0.0, 0.0 }
 
-local function draw_arc (g, arc)
-	g.setColor (255, 255, 255)
+local function draw_arc (g, arc, color)
+	if not arc then
+		return
+	end
+	
+	local color = color or {255, 255, 255}
+	
+	g.setColor (color)
 	
 	if arc.lines == nil then
 		local a = arc.start.pos
@@ -200,31 +200,54 @@ function love.draw ()
 	for _, arc in ipairs (arcs) do
 		draw_arc (love.graphics, arc)
 	end
-	draw_arc (love.graphics, arc)
+	draw_arc (love.graphics, arc, {120, 120, 120})
 	--love.graphics.line (debug [1], debug [2], arc.start.pos [1], arc.start.pos [2])
+	
+	if not arc and #arcs == 0 then
+		love.graphics.setColor (120, 120, 120)
+		love.graphics.printf ("Click to start", 0, 300, 800, "center")
+		
+		love.graphics.setColor (255, 64, 64)
+		love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1], lastMouse [2])
+	end
 end
 
 function love.mousemoved (x, y)
-	--arc.stop.pos = { x, y }
+	if arc then
+		arc.stop.tangent, debug, arc.lines = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent))
+		arc.stop.pos = arc.lines [#arc.lines]
+	end
 	
-	--arc.lines = solve_circular_arc (arc.start.pos, arc.stop.pos)
-	arc.stop.tangent, debug, arc.lines = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent))
-	arc.stop.pos = arc.lines [#arc.lines]
+	lastMouse = {x, y}
 end
 
-function love.mousepressed ()
+function love.mousepressed (x, y)
 	local old_arc = arc
 	table.insert (arcs, arc)
 	
-	arc = {
-		start = {
-			pos = old_arc.stop.pos,
-			tangent = old_arc.stop.tangent,
-		},
-		stop = {
-			pos = old_arc.stop.pos,
-			tangent = old_arc.stop.tangent,
-		},
-		lines = nil,
-	}
+	if old_arc then
+		arc = {
+			start = {
+				pos = old_arc.stop.pos,
+				tangent = old_arc.stop.tangent,
+			},
+			stop = {
+				pos = old_arc.stop.pos,
+				tangent = old_arc.stop.tangent,
+			},
+			lines = nil,
+		}
+	else
+		arc = {
+			start = {
+				pos = {x, y},
+				tangent = {1, 0},
+			},
+			stop = {
+				pos = {x, y},
+				tangent = {1, 0},
+			},
+			lines = nil,
+		}
+	end
 end
