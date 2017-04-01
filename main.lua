@@ -1,12 +1,21 @@
 local lume = require "lume"
 
 local arc = nil
-
 local arcs = {}
-
 local lastMouse = {0, -16}
-
 local track_radius = 10
+
+local tool = "append"
+
+local tools = {
+	['d'] = {"append", "(D)raw"},
+	['f'] = {'nothing', "(F)ucking nothing"},
+}
+
+local tool_order = {
+	"d",
+	"f"
+}
 
 local function tangent_to_basis (tangent)
 	return {
@@ -164,14 +173,27 @@ function love.draw ()
 	for _, arc in ipairs (arcs) do
 		draw_arc (love.graphics, arc)
 	end
-	draw_arc (love.graphics, arc, {120, 120, 120})
 	
-	if not arc and #arcs == 0 then
-		love.graphics.setColor (120, 120, 120)
-		love.graphics.printf ("Click to start", 0, 300, 800, "center")
+	if tool == "append" then
+		draw_arc (love.graphics, arc, {120, 120, 120})
 		
-		love.graphics.setColor (255, 64, 64)
-		love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1] + 16.0, lastMouse [2])
+		if not arc and #arcs == 0 then
+			love.graphics.setColor (120, 120, 120)
+			love.graphics.printf ("Click to start", 0, 300, 800, "center")
+			
+			love.graphics.setColor (255, 64, 64)
+			love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1] + 16.0, lastMouse [2])
+		end
+	elseif tool == "select" then
+		love.graphics.setColor (64, 64, 64, 192)
+		love.graphics.rectangle ("fill", 0, 500, 800, 40)
+		
+		local help_text = table.concat (lume.map (tool_order, function (char)
+			return tools [char][2]
+		end), ", ")
+		
+		love.graphics.setColor (240, 240, 240, 255)
+		love.graphics.printf (help_text, 0, 515, 800, "center")
 	end
 end
 
@@ -182,29 +204,31 @@ end
 function love.update (dt)
 	local x, y = love.mouse.getPosition ()
 	
-	if arc then
-		local tangent = arc.start.tangent
-		
-		if #arcs == 0 then
-			tangent = {
-				x - arc.start.pos [1],
-				y - arc.start.pos [2],
-			}
+	if tool == "append" then
+		if arc then
+			local tangent = arc.start.tangent
 			
-			local theta = math.atan2 (tangent [2], tangent [1])
-			local theta_gran = 7.5
-			local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + theta_gran * 0.5) / theta_gran) * theta_gran) * math.pi / 180.0
+			if #arcs == 0 then
+				tangent = {
+					x - arc.start.pos [1],
+					y - arc.start.pos [2],
+				}
+				
+				local theta = math.atan2 (tangent [2], tangent [1])
+				local theta_gran = 7.5
+				local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + theta_gran * 0.5) / theta_gran) * theta_gran) * math.pi / 180.0
+				
+				tangent = {
+					math.cos (snapped_theta),
+					math.sin (snapped_theta),
+				}
+			end
 			
-			tangent = {
-				math.cos (snapped_theta),
-				math.sin (snapped_theta),
-			}
+			arc.start.tangent = tangent
+			
+			local gran = 5.0 / 16.0
+			arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent), arc.start.curvature)
 		end
-		
-		arc.start.tangent = tangent
-		
-		local gran = 5.0 / 16.0
-		arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent), arc.start.curvature)
 	end
 end
 
@@ -235,9 +259,15 @@ local function update_live_arc ()
 	end
 end
 
-function love.mousepressed (x, y)
-	table.insert (arcs, arc)
-	update_live_arc ()
+function love.mousepressed (x, y, button)
+	if button == 1 then
+		if tool == "append" then
+			table.insert (arcs, arc)
+			update_live_arc ()
+		end
+	elseif button == 2 then
+		tool = "select"
+	end
 end
 
 local function save ()
@@ -264,4 +294,17 @@ end
 
 function love.quit ()
 	save ()
+end
+
+function love.keypressed (key)
+	if key == "escape" then
+		tool = "select"
+	end
+	
+	if tool == "select" then
+		local next_tool = tools [key]
+		if next_tool then
+			tool = next_tool [1]
+		end
+	end
 end
