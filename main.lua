@@ -15,6 +15,8 @@ local arc = {
 local debug = { 0.0, 0.0 }
 
 local function draw_arc (g, arc)
+	g.setColor (255, 255, 255)
+	
 	if arc.lines == nil then
 		local a = arc.start.pos
 		local b = arc.stop.pos
@@ -33,6 +35,9 @@ local function draw_arc (g, arc)
 			g.line (a [1], a [2], b [1], b [2])
 		end
 	end
+	
+	g.setColor (64, 64, 64)
+	g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
 end
 
 local function solve_circular_arc (start, stop)
