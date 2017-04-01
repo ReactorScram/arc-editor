@@ -62,18 +62,7 @@ local function draw_arc (g, arc, color)
 		g.setColor (255, 64, 64)
 		g.line (pos [1], pos [2], pos [1] + 16 * arc.stop.tangent [1], pos [2] + 16 * arc.stop.tangent [2])
 		
-		local avg_curvature = arc.params.total_theta / arc.params.length
-		local stop_curvature = avg_curvature + (avg_curvature - arc.start.curvature)
-		
 		local length = 64.0
-		--[[
-		draw_polyline (tesselate_arc_basis (pos, {
-			start_curvature = stop_curvature,
-			total_theta = length * stop_curvature,
-			length = length,
-			num_segments = 16,
-		}, basis, 0.0))
-		--]]
 		local normal = from_basis ({0.0, 16.0}, basis)
 		
 		g.line (pos [1], pos [2], pos [1] + normal [1], pos [2] + normal [2])
@@ -118,7 +107,6 @@ function bend_arc (mouse, start_curvature)
 		total_theta = total_arc_theta,
 		length = arc_length,
 		num_segments = num_segments,
-		start_curvature = start_curvature or 0.0,
 	}
 	local lines = tesselate_arc (arc_params)
 	local tangent = {math.cos (total_arc_theta), math.sin (total_arc_theta)}
@@ -140,13 +128,11 @@ function tesselate_arc (p, offset)
 	}
 	
 	local curvature = p.total_theta / p.length
-	local end_curvature = curvature + (curvature - p.start_curvature)
 	local theta = 0.0
 	local last_point = {0.0, 0.0}
 	local segment_length = p.length / p.num_segments
 	for i = 1, p.num_segments do
 		local t = i / p.num_segments
-		--local local_curvature = p.start_curvature * (1.0 - t) + end_curvature * t
 		local local_curvature = curvature
 		theta = theta + 0.5 * local_curvature * segment_length
 		local point = {
@@ -218,32 +204,23 @@ function love.update (dt)
 		arc.start.tangent = tangent
 		
 		local gran = 5.0 / 16.0
-		local rounded_curvature = math.floor ((arc.start.curvature - 0.5 * gran) / gran) * gran + 0.5 * gran
 		arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent), arc.start.curvature)
 	end
 end
 
-function love.mousepressed (x, y)
-	local old_arc = arc
-	table.insert (arcs, arc)
-	
+local function update_live_arc ()
+	local old_arc = arcs [#arcs]
 	if old_arc then
 		local old_p = old_arc.params
 		local old_points = tesselate_arc_basis (old_arc.start.pos, old_p, tangent_to_basis (old_arc.start.tangent))
 		local old_stop = old_points [#old_points]
-		local old_avg_curvature = old_p.total_theta / old_p.length
-		local old_stop_curvature = old_avg_curvature + (old_avg_curvature - old_p.start_curvature)
 		
 		arc = {
 			start = {
 				pos = old_stop,
 				tangent = old_arc.stop.tangent,
-				curvature = old_stop_curvature,
 			},
-			stop = {
-				pos = old_stop,
-				tangent = old_arc.stop.tangent,
-			},
+			stop = {},
 			params = nil,
 		}
 	else
@@ -251,13 +228,40 @@ function love.mousepressed (x, y)
 			start = {
 				pos = {x, y},
 				tangent = {1, 0},
-				curvature = 0.0,
 			},
-			stop = {
-				pos = {x, y},
-				tangent = {1, 0},
-			},
+			stop = {},
 			params = nil,
 		}
 	end
+end
+
+function love.mousepressed (x, y)
+	table.insert (arcs, arc)
+	update_live_arc ()
+end
+
+local function save ()
+	local f = io.open ("arc-editor.lua", "w")
+	
+	f:write ("return " .. lume.serialize (arcs))
+	
+	f:close ()
+end
+
+local function load ()
+	arcs = dofile ("arc-editor.lua") or {}
+	update_live_arc ()
+end
+
+local function roundtrip ()
+	save ()
+	load ()
+end
+
+function love.load ()
+	load ()
+end
+
+function love.quit ()
+	save ()
 end
