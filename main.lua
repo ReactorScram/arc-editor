@@ -1,3 +1,5 @@
+local lume = require "lume"
+
 local arc = nil
 
 local arcs = {}
@@ -36,15 +38,11 @@ local function draw_arc (g, arc, color)
 	
 	g.setColor (color)
 	
-	if arc.lines == nil then
-		local a = arc.start.pos
-		local b = arc.stop.pos
+	if arc.params then
+		local basis = tangent_to_basis (arc.start.tangent)
+		local points = tesselate_arc_basis (arc.start.pos, arc.params, basis)
 		
-		g.line (a [1], a [2], b [1], b [2])
-		
-		--g.line (b [1], b [2], b [1] + arc.stop.tangent [1] * 16, b [2] + arc.stop.tangent [2] * 16)
-	else
-		local ls = arc.lines
+		local ls = points
 		for i = 1, #ls - 1 do
 			local j = i + 1
 			
@@ -55,14 +53,16 @@ local function draw_arc (g, arc, color)
 		end
 		
 		if arc.stop.tangent then
+			local pos = points [#points]
+			
 			g.setColor (255, 64, 64)
-			g.line (arc.stop.pos [1], arc.stop.pos [2], arc.stop.pos [1] + 16 * arc.stop.tangent [1], arc.stop.pos [2] + 16 * arc.stop.tangent [2])
+			g.line (pos [1], pos [2], pos [1] + 16 * arc.stop.tangent [1], pos [2] + 16 * arc.stop.tangent [2])
 			
 			local basis = tangent_to_basis (arc.stop.tangent)
 			
 			local normal = from_basis ({0.0, 16.0}, basis)
 			
-			g.line (arc.stop.pos [1], arc.stop.pos [2], arc.stop.pos [1] + normal [1], arc.stop.pos [2] + normal [2])
+			g.line (pos [1], pos [2], pos [1] + normal [1], pos [2] + normal [2])
 		end
 	end
 	
@@ -73,17 +73,11 @@ end
 function bend_arc_basis (start, mouse, basis)
 	local local_mouse = into_basis ({mouse [1] - start [1], mouse [2] - start [2]}, basis)
 	
-	local a, c = bend_arc (local_mouse)
-	
-	local lines = {}
-	for i, v in ipairs (c) do
-		local v = from_basis (v, basis)
-		lines [i] = {v [1] + start [1], v [2] + start [2]}
-	end
+	local a, arc_params = bend_arc (local_mouse)
 	
 	local tangent = from_basis (a, basis)
 	
-	return tangent, lines
+	return tangent, arc_params
 end
 
 function bend_arc (mouse)
@@ -105,21 +99,34 @@ function bend_arc (mouse)
 	
 	local arc_length = radius
 	
-	local curvature = total_arc_theta / arc_length
-	local lines = tesselate_arc (curvature, arc_length, num_segments)
+	local arc_params = {
+		total_theta = total_arc_theta,
+		length = arc_length,
+		num_segments = num_segments,
+	}
+	local lines = tesselate_arc (arc_params)
+	local tangent = {math.cos (total_arc_theta), math.sin (total_arc_theta)}
 	
-	return {math.cos (total_arc_theta), math.sin (total_arc_theta)}, lines
+	return tangent, arc_params
 end
 
-function tesselate_arc (curvature, arc_length, num_segments)
+function tesselate_arc_basis (start, p, basis)
+	return lume.map (tesselate_arc (p), function (p)
+		local p2 = from_basis (p, basis)
+		return {p2 [1] + start [1], p2 [2] + start [2]}
+	end)
+end
+
+function tesselate_arc (p)
 	local lines = {
 		{0.0, 0.0},
 	}
 	
+	local curvature = p.total_theta / p.length
 	local theta = 0.0
 	local last_point = {0.0, 0.0}
-	local segment_length = arc_length / num_segments
-	for i = 1, num_segments - 1 do
+	local segment_length = p.length / p.num_segments
+	for i = 1, p.num_segments - 1 do
 		theta = theta + curvature * segment_length
 		local point = {
 			last_point [1] + segment_length * math.cos (theta),
@@ -149,8 +156,7 @@ end
 
 function love.mousemoved (x, y)
 	if arc then
-		arc.stop.tangent, arc.lines = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent))
-		arc.stop.pos = arc.lines [#arc.lines]
+		arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent))
 	end
 	
 	lastMouse = {x, y}
@@ -161,16 +167,19 @@ function love.mousepressed (x, y)
 	table.insert (arcs, arc)
 	
 	if old_arc then
+		local old_points = tesselate_arc_basis (old_arc.start.pos, old_arc.params, tangent_to_basis (old_arc.start.tangent))
+		local old_stop = old_points [#old_points]
+		
 		arc = {
 			start = {
-				pos = old_arc.stop.pos,
+				pos = old_stop,
 				tangent = old_arc.stop.tangent,
 			},
 			stop = {
-				pos = old_arc.stop.pos,
+				pos = old_stop,
 				tangent = old_arc.stop.tangent,
 			},
-			lines = nil,
+			params = nil,
 		}
 	else
 		arc = {
@@ -182,7 +191,7 @@ function love.mousepressed (x, y)
 				pos = {x, y},
 				tangent = {1, 0},
 			},
-			lines = nil,
+			params = nil,
 		}
 	end
 end
