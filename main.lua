@@ -45,6 +45,19 @@ local function from_basis (v, basis)
 	}
 end
 
+local function is_arc_grabbable (arcs, i)
+	local prev_arc = arcs [i - 1]
+	local arc = arcs [i]
+	
+	if arc and i == 1 then
+		return true
+	end
+	
+	if prev_arc and arc then
+		return prev_arc.params.is_expander
+	end
+end
+
 local function bend_arc_snap (mouse)
 	local theta = math.atan2 (mouse [2], mouse [1])
 	local theta_gran = 7.5
@@ -300,18 +313,20 @@ function love.draw ()
 			draw_arc (love.graphics, arc, {64, 64, 64})
 		end
 		
-		for _, arc in ipairs (arcs) do
-			local color = {120, 120, 120}
-			
-			local center = arc.start.pos
-			local radius = track_radius + 2
-			
-			if mouse_in_circle (lastMouse, center, radius) then
-				color = {255, 64, 64}
+		for i, arc in ipairs (arcs) do
+			if is_arc_grabbable (arcs, i) then
+				local color = {120, 120, 120}
+				
+				local center = arc.start.pos
+				local radius = track_radius + 2
+				
+				if mouse_in_circle (lastMouse, center, radius) then
+					color = {255, 64, 64}
+				end
+				
+				love.graphics.setColor (color)
+				love.graphics.circle ("line", center [1], center [2], radius)
 			end
-			
-			love.graphics.setColor (color)
-			love.graphics.circle ("line", center [1], center [2], radius)
 		end
 	elseif tool == "select" then
 		for _, arc in ipairs (arcs) do
@@ -381,8 +396,6 @@ function love.update (dt)
 	elseif tool == "add_expander" then
 		if arc then
 			if #arcs >= 1 then
-				arc.stop.tangent = arc.start.tangent
-			
 				arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent), "expander")
 			end
 		end
@@ -394,23 +407,38 @@ function love.update (dt)
 			}
 			
 			for _, i in ipairs (drag_data) do
-				local arc = arcs [i]
-				local prev_arc = arcs [i - 1]
-				local next_arc = arcs [i + 1]
-				
-				arc.start.pos = {
-					arc.start.pos [1] + mouse_delta [1],
-					arc.start.pos [2] + mouse_delta [2],
-				}
-				
-				if prev_arc then
-					prev_arc.stop.tangent, prev_arc.params = bend_arc_basis (prev_arc.start.pos, arc.start.pos, tangent_to_basis (prev_arc.start.tangent))
+				for j = i, #arcs do
+					local arc = arcs [j]
+					local prev_arc = arcs [j - 1]
+					local next_arc = arcs [j + 1]
 					
-					arc.start.tangent = prev_arc.stop.tangent
+					local new_start_pos = {
+						arc.start.pos [1] + mouse_delta [1],
+						arc.start.pos [2] + mouse_delta [2],
+					}
 					
-					if next_arc then
-						arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, next_arc.start.pos, tangent_to_basis (arc.start.tangent))
+					if prev_arc and prev_arc.params.is_expander then
+						prev_arc.stop.tangent, prev_arc.params = bend_arc_basis (prev_arc.start.pos, new_start_pos, tangent_to_basis (prev_arc.start.tangent), "expander")
 					end
+					
+					if arc.params.is_expander then
+						local stop_pos = nil
+						
+						if next_arc then
+							stop_pos = next_arc.start.pos
+						else
+							local points = tesselate_arc_basis (arc.start.pos, arc.params, tangent_to_basis (arc.start.tangent), 0.0)
+							
+							stop_pos = points [#points]
+						end
+						
+						arc.start.pos = new_start_pos
+						
+						arc.stop.tangent, arc.params = bend_arc_basis (new_start_pos, stop_pos, tangent_to_basis (arc.start.tangent), "expander")
+						break
+					end
+					
+					arc.start.pos = new_start_pos
 				end
 			end
 			
@@ -461,7 +489,8 @@ function love.mousepressed (x, y, button)
 			drag_data = {}
 			
 			for i, arc in ipairs (arcs) do
-				if mouse_in_circle (drag_start, arc.start.pos, track_radius + 2) then
+				local arc_is_grabbable = is_arc_grabbable (arcs, i)
+				if arc_is_grabbable and mouse_in_circle (drag_start, arc.start.pos, track_radius + 2) then
 					table.insert (drag_data, i)
 				end
 			end
@@ -502,12 +531,13 @@ function love.keypressed (key)
 		tool = "select"
 	end
 	
-	if tool == "select" then
-		local next_tool = tools [key]
-		if next_tool then
-			tool = next_tool [1]
-		end
-	elseif tool == "append" or tool == "add_expander" then
+	local next_tool = tools [key]
+	if next_tool then
+		tool = next_tool [1]
+		return
+	end
+	
+	if tool == "append" or tool == "add_expander" then
 		if key == "backspace" then
 			arcs [#arcs] = nil
 			arc = nil
