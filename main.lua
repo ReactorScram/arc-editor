@@ -59,7 +59,8 @@ local function bend_arc_snap (mouse)
 	local num_segments = 8
 	local gran = num_segments * 3
 	
-	local arc_length = math.floor (radius / gran) * gran
+	--local arc_length = math.floor (radius / gran) * gran
+	local arc_length = radius
 	
 	local arc_params = {
 		total_theta = total_arc_theta,
