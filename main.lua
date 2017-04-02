@@ -243,19 +243,15 @@ local function draw_arc (g, arc, color)
 	--g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
 end
 
-local function pick_arc (arc, last_mouse)
-	local curvature = arc.params.total_theta / arc.params.length
-	local mouse_local = into_basis ({
-		last_mouse [1] - arc.start.pos [1],
-		last_mouse [2] - arc.start.pos [2],
-	}, tangent_to_basis (arc.start.tangent))
+local function pick_arc (mouse_local, params, end_pos)
+	local curvature = params.total_theta / params.length
 	
 	local hit_radius = track_radius + 2
 	
 	if math.abs (curvature) < 0.0001 then
 		local radius_good = mouse_local [2] >= -hit_radius and mouse_local [2] <= hit_radius
 		
-		local theta_good = mouse_local [1] >= 0 and mouse_local [1] <= arc.params.length
+		local theta_good = mouse_local [1] >= 0 and mouse_local [1] <= params.length
 		
 		return theta_good and radius_good
 	else
@@ -263,7 +259,7 @@ local function pick_arc (arc, last_mouse)
 		
 		local theta = math.atan2 (mouse_local [2] - radius, mouse_local [1]) + math.pi * 0.5
 		
-		if arc.params.total_theta < 0.0 then
+		if params.total_theta < 0.0 then
 			theta = math.atan2 ((mouse_local [2] - radius), mouse_local [1]) - math.pi * 0.5
 		end
 		
@@ -271,10 +267,25 @@ local function pick_arc (arc, last_mouse)
 		
 		local radius_good = mouse_radius <= math.abs (radius) + hit_radius and mouse_radius >= math.abs (radius) - hit_radius
 		
-		local theta_good = theta >= math.min (0.0, arc.params.total_theta) and theta <= math.max (0.0, arc.params.total_theta)
+		local theta_good = theta >= math.min (0.0, params.total_theta) and theta <= math.max (0.0, params.total_theta)
 		
 		return radius_good and theta_good
 	end
+end
+
+local function pick_arc_basis (arc, last_mouse)
+	local basis = tangent_to_basis (arc.start.tangent)
+	local mouse_local = into_basis ({
+		last_mouse [1] - arc.start.pos [1],
+		last_mouse [2] - arc.start.pos [2],
+	}, basis)
+	
+	local points = tesselate_arc_basis (arc.start.pos, arc.params, basis)
+	local end_pos = points [#points]
+	
+	local hit_radius = track_radius + 2
+	
+	return pick_arc (mouse_local, arc.params, end_pos)
 end
 
 function love.draw ()
@@ -296,7 +307,7 @@ function love.draw ()
 			local color = {64, 64, 64, 255}
 			local selected_color = {255, 64, 255, 255}
 			
-			if pick_arc (arc, lastMouse) then
+			if pick_arc_basis (arc, lastMouse) then
 				color = selected_color
 			end
 			
