@@ -1,9 +1,11 @@
 local lume = require "lume"
+local Basis = require "basis"
+local Tesselate = require "tesselate"
 
 local arc = nil
 local arcs = {}
 local lastMouse = {0, -16}
-local track_radius = 10
+local track_radius = 20
 
 local tool = "select"
 
@@ -24,26 +26,7 @@ local tool_order = {
 
 local selected = {}
 
-local function tangent_to_basis (tangent)
-	return {
-		x = tangent,
-		y = {-tangent [2], tangent [1]},
-	}
-end
 
-local function into_basis (v, basis)
-	return {
-		v [1] * basis.x [1] + v [2] * basis.x [2],
-		v [1] * basis.y [1] + v [2] * basis.y [2],
-	}
-end
-
-local function from_basis (v, basis)
-	return {
-		v [1] * basis.x [1] + v [2] * basis.y [1],
-		v [1] * basis.x [2] + v [2] * basis.y [2],
-	}
-end
 
 local function is_arc_grabbable (arcs, i)
 	local prev_arc = arcs [i - 1]
@@ -78,7 +61,7 @@ local function bend_arc_snap (mouse)
 		length = arc_length,
 		num_segments = num_segments,
 	}
-	--local lines = tesselate_arc (arc_params)
+	--local lines = Tesselate.arc (arc_params)
 	local tangent = {math.cos (total_arc_theta), math.sin (total_arc_theta)}
 	
 	return tangent, arc_params
@@ -104,7 +87,7 @@ local function bend_expander (mouse)
 end
 
 local function bend_arc_basis (start, mouse, basis, type)
-	local local_mouse = into_basis ({mouse [1] - start [1], mouse [2] - start [2]}, basis)
+	local local_mouse = Basis.into_basis ({mouse [1] - start [1], mouse [2] - start [2]}, basis)
 	
 	local tangent, arc_params
 	
@@ -114,89 +97,9 @@ local function bend_arc_basis (start, mouse, basis, type)
 		tangent, arc_params = bend_arc_snap (local_mouse)
 	end
 	
-	local tangent = from_basis (tangent, basis)
+	local tangent = Basis.from_basis (tangent, basis)
 	
 	return tangent, arc_params
-end
-
-local function tesselate_arc (p, offset)
-	local offset = offset or 0.0
-	
-	local points = {{0, 0}}
-	local normals = {{0, offset}}
-	
-	local curvature = p.total_theta / p.num_segments
-	local theta = 0.0
-	local last_point = {0.0, 0.0}
-	--local segment_length = p.length / p.num_segments
-	local segment_length = 1.0
-	for i = 1, p.num_segments do
-		local t = i / p.num_segments
-		local local_curvature = curvature
-		theta = theta + 0.5 * local_curvature * segment_length
-		local point = {
-			last_point [1] + segment_length * math.cos (theta),
-			last_point [2] + segment_length * math.sin (theta),
-		}
-		theta = theta + 0.5 * local_curvature * segment_length
-		
-		table.insert (points, point)
-		
-		if offset == 0.0 then
-			table.insert (normals, {0, 0})
-		else
-			local normal_theta = theta + 0.5 * math.pi
-			local normal = {
-				offset * math.cos (normal_theta),
-				offset * math.sin (normal_theta),
-			}
-			
-			table.insert (normals, normal)
-		end
-		last_point = point
-	end
-	
-	local effective_length = math.sqrt (math.pow (last_point [1], 2.0) + math.pow (last_point [2], 2.0))
-	
-	local scale = p.length / effective_length
-	
-	for i, v in ipairs (points) do
-		points [i] = {
-			v [1] * scale,
-			v [2] * scale,
-		}
-	end
-	
-	local lines = {}
-	
-	for i = 1, #points do
-		table.insert (lines, {
-			points [i][1] + normals [i][1],
-			points [i][2] + normals [i][2],
-		})
-	end
-	
-	if p.is_expander then
-		local original_count = #lines
-		local midpoint = points [original_count]
-		for i = 1, original_count do
-			local mirr_i = original_count - i + 1
-			
-			table.insert (lines, {
-				2.0 * midpoint [1] - points [mirr_i][1] + normals [mirr_i][1],
-				2.0 * midpoint [2] - points [mirr_i][2] + normals [mirr_i][2],
-			})
-		end
-	end
-	
-	return lines
-end
-
-local function tesselate_arc_basis (start, p, basis, offset)
-	return lume.map (tesselate_arc (p, offset), function (p)
-		local p2 = from_basis (p, basis)
-		return {p2 [1] + start [1], p2 [2] + start [2]}
-	end)
 end
 
 local function draw_arc (g, arc, color)
@@ -209,8 +112,8 @@ local function draw_arc (g, arc, color)
 	g.setColor (color)
 	
 	if arc.params and arc.stop.tangent then
-		local basis = tangent_to_basis (arc.start.tangent)
-		local points = tesselate_arc_basis (arc.start.pos, arc.params, basis)
+		local basis = Basis.tangent_to_basis (arc.start.tangent)
+		local points = Tesselate.arc_basis (arc.start.pos, arc.params, basis)
 		
 		local function draw_polyline (ls)
 			for i = 1, #ls - 1 do
@@ -223,17 +126,17 @@ local function draw_arc (g, arc, color)
 			end
 		end
 		
-		draw_polyline (tesselate_arc_basis (arc.start.pos, arc.params, basis, -track_radius))
-		draw_polyline (tesselate_arc_basis (arc.start.pos, arc.params, basis, track_radius))
+		draw_polyline (Tesselate.arc_basis (arc.start.pos, arc.params, basis, -track_radius))
+		draw_polyline (Tesselate.arc_basis (arc.start.pos, arc.params, basis, track_radius))
 		
 		local pos = points [#points]
-		local basis = tangent_to_basis (arc.stop.tangent)
+		local basis = Basis.tangent_to_basis (arc.stop.tangent)
 		
 		g.setColor (255, 64, 64)
 		g.line (pos [1], pos [2], pos [1] + 16 * arc.stop.tangent [1], pos [2] + 16 * arc.stop.tangent [2])
 		
 		local length = 64.0
-		local normal = from_basis ({0.0, 16.0}, basis)
+		local normal = Basis.from_basis ({0.0, 16.0}, basis)
 		
 		g.line (pos [1], pos [2], pos [1] + normal [1], pos [2] + normal [2])
 	end
@@ -273,13 +176,13 @@ local function pick_arc (mouse_local, params, segment_length)
 end
 
 local function pick_arc_basis (arc, last_mouse)
-	local basis = tangent_to_basis (arc.start.tangent)
-	local mouse_local = into_basis ({
+	local basis = Basis.tangent_to_basis (arc.start.tangent)
+	local mouse_local = Basis.into_basis ({
 		last_mouse [1] - arc.start.pos [1],
 		last_mouse [2] - arc.start.pos [2],
 	}, basis)
 	
-	local points = tesselate_arc_basis (arc.start.pos, arc.params, basis)
+	local points = Tesselate.arc_basis (arc.start.pos, arc.params, basis)
 	--local end_pos = points [#points]
 	local segment_length = math.sqrt (math.pow (points [2][1] - points [1][1], 2.0) + math.pow (points [2][2] - points [1][2], 2.0))
 	
@@ -391,12 +294,12 @@ function love.update (dt)
 			
 			arc.start.tangent = tangent
 			
-			arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent))
+			arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, Basis.tangent_to_basis (tangent))
 		end
 	elseif tool == "add_expander" then
 		if arc then
 			if #arcs >= 1 then
-				arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent), "expander")
+				arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, Basis.tangent_to_basis (arc.start.tangent), "expander")
 			end
 		end
 	elseif tool == "grab_points" then
@@ -418,7 +321,7 @@ function love.update (dt)
 					}
 					
 					if prev_arc and prev_arc.params.is_expander then
-						prev_arc.stop.tangent, prev_arc.params = bend_arc_basis (prev_arc.start.pos, new_start_pos, tangent_to_basis (prev_arc.start.tangent), "expander")
+						prev_arc.stop.tangent, prev_arc.params = bend_arc_basis (prev_arc.start.pos, new_start_pos, Basis.tangent_to_basis (prev_arc.start.tangent), "expander")
 					end
 					
 					if arc.params.is_expander then
@@ -427,14 +330,14 @@ function love.update (dt)
 						if next_arc then
 							stop_pos = next_arc.start.pos
 						else
-							local points = tesselate_arc_basis (arc.start.pos, arc.params, tangent_to_basis (arc.start.tangent), 0.0)
+							local points = Tesselate.arc_basis (arc.start.pos, arc.params, Basis.tangent_to_basis (arc.start.tangent), 0.0)
 							
 							stop_pos = points [#points]
 						end
 						
 						arc.start.pos = new_start_pos
 						
-						arc.stop.tangent, arc.params = bend_arc_basis (new_start_pos, stop_pos, tangent_to_basis (arc.start.tangent), "expander")
+						arc.stop.tangent, arc.params = bend_arc_basis (new_start_pos, stop_pos, Basis.tangent_to_basis (arc.start.tangent), "expander")
 						break
 					end
 					
@@ -451,7 +354,7 @@ local function update_live_arc ()
 	local old_arc = arcs [#arcs]
 	if old_arc then
 		local old_p = old_arc.params
-		local old_points = tesselate_arc_basis (old_arc.start.pos, old_p, tangent_to_basis (old_arc.start.tangent))
+		local old_points = Tesselate.arc_basis (old_arc.start.pos, old_p, Basis.tangent_to_basis (old_arc.start.tangent))
 		local old_stop = old_points [#old_points]
 		
 		arc = {
@@ -530,6 +433,8 @@ function love.keypressed (key)
 	if key == "escape" then
 		tool = "select"
 	end
+	
+	local old_tool = tool
 	
 	local next_tool = tools [key]
 	if next_tool then
