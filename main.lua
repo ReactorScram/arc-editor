@@ -243,8 +243,8 @@ local function draw_arc (g, arc, color)
 	--g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
 end
 
-local function pick_arc (mouse_local, params, end_pos)
-	local curvature = params.total_theta / params.length
+local function pick_arc (mouse_local, params, segment_length)
+	local curvature = params.total_theta / (params.num_segments * segment_length)
 	
 	local hit_radius = track_radius + 2
 	
@@ -281,11 +281,12 @@ local function pick_arc_basis (arc, last_mouse)
 	}, basis)
 	
 	local points = tesselate_arc_basis (arc.start.pos, arc.params, basis)
-	local end_pos = points [#points]
+	--local end_pos = points [#points]
+	local segment_length = math.sqrt (math.pow (points [2][1] - points [1][1], 2.0) + math.pow (points [2][2] - points [1][2], 2.0))
 	
 	local hit_radius = track_radius + 2
 	
-	return pick_arc (mouse_local, arc.params, end_pos)
+	return pick_arc (mouse_local, arc.params, segment_length)
 end
 
 function love.draw ()
