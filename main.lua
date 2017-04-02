@@ -170,11 +170,10 @@ function tesselate_arc (p, offset)
 end
 
 function love.draw ()
-	for _, arc in ipairs (arcs) do
-		draw_arc (love.graphics, arc)
-	end
-	
 	if tool == "append" then
+		for _, arc in ipairs (arcs) do
+			draw_arc (love.graphics, arc)
+		end
 		draw_arc (love.graphics, arc, {120, 120, 120})
 		
 		if not arc and #arcs == 0 then
@@ -185,6 +184,47 @@ function love.draw ()
 			love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1] + 16.0, lastMouse [2])
 		end
 	elseif tool == "select" then
+		for _, arc in ipairs (arcs) do
+			local color = {64, 64, 64, 255}
+			local selected_color = {255, 64, 64, 255}
+			
+			local curvature = arc.params.total_theta / arc.params.length
+			local mouse_local = into_basis ({
+				lastMouse [1] - arc.start.pos [1],
+				lastMouse [2] - arc.start.pos [2],
+			}, tangent_to_basis (arc.start.tangent))
+			
+			if math.abs (curvature) < 0.0001 then
+				local radius_good = mouse_local [2] >= -10 and mouse_local [2] <= 10
+				
+				local theta_good = mouse_local [1] >= 0 and mouse_local [1] <= arc.params.length
+				
+				if theta_good and radius_good then
+					color = selected_color
+				end
+			else
+				local radius = 1.0 / curvature
+				
+				local theta = math.atan2 (mouse_local [2] - radius, mouse_local [1]) + math.pi * 0.5
+				
+				if radius < 0.0 then
+					theta = math.atan2 (mouse_local [2] - radius, mouse_local [1]) - math.pi * 0.5
+				end
+				
+				local mouse_radius = math.sqrt (math.pow (mouse_local [1], 2.0) + math.pow (mouse_local [2] - radius, 2.0))
+				
+				local radius_good = mouse_radius <= radius + 10 and mouse_radius >= radius - 10
+				
+				local theta_good = theta >= math.min (0.0, arc.params.total_theta) and theta <= math.max (0.0, arc.params.total_theta)
+				
+				if theta_good and radius_good then
+					color = selected_color
+				end
+			end
+			
+			draw_arc (love.graphics, arc, color)
+		end
+		
 		love.graphics.push ()
 		
 		if lastMouse [2] < 300 then
