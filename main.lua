@@ -5,15 +5,15 @@ local arcs = {}
 local lastMouse = {0, -16}
 local track_radius = 10
 
-local tool = "append"
+local tool = "select"
 
 local tools = {
-	['d'] = {"append", "(D)raw"},
+	['a'] = {"append", "(A)rc"},
 	['e'] = {'add_expander', "(E)xpander"},
 }
 
 local tool_order = {
-	"d",
+	"a",
 	"e"
 }
 
@@ -243,6 +243,40 @@ local function draw_arc (g, arc, color)
 	--g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
 end
 
+local function pick_arc (arc, last_mouse)
+	local curvature = arc.params.total_theta / arc.params.length
+	local mouse_local = into_basis ({
+		last_mouse [1] - arc.start.pos [1],
+		last_mouse [2] - arc.start.pos [2],
+	}, tangent_to_basis (arc.start.tangent))
+	
+	local hit_radius = track_radius + 2
+	
+	if math.abs (curvature) < 0.0001 then
+		local radius_good = mouse_local [2] >= -hit_radius and mouse_local [2] <= hit_radius
+		
+		local theta_good = mouse_local [1] >= 0 and mouse_local [1] <= arc.params.length
+		
+		return theta_good and radius_good
+	else
+		local radius = 1.0 / curvature
+		
+		local theta = math.atan2 (mouse_local [2] - radius, mouse_local [1]) + math.pi * 0.5
+		
+		if arc.params.total_theta < 0.0 then
+			theta = math.atan2 ((mouse_local [2] - radius), mouse_local [1]) - math.pi * 0.5
+		end
+		
+		local mouse_radius = math.sqrt (math.pow (mouse_local [1], 2.0) + math.pow (mouse_local [2] - radius, 2.0))
+		
+		local radius_good = mouse_radius <= math.abs (radius) + hit_radius and mouse_radius >= math.abs (radius) - hit_radius
+		
+		local theta_good = theta >= math.min (0.0, arc.params.total_theta) and theta <= math.max (0.0, arc.params.total_theta)
+		
+		return radius_good and theta_good
+	end
+end
+
 function love.draw ()
 	if tool == "append" or tool == "add_expander" then
 		for _, arc in ipairs (arcs) do
@@ -262,40 +296,8 @@ function love.draw ()
 			local color = {64, 64, 64, 255}
 			local selected_color = {255, 64, 255, 255}
 			
-			local curvature = arc.params.total_theta / arc.params.length
-			local mouse_local = into_basis ({
-				lastMouse [1] - arc.start.pos [1],
-				lastMouse [2] - arc.start.pos [2],
-			}, tangent_to_basis (arc.start.tangent))
-			
-			local hit_radius = track_radius + 2
-			
-			if math.abs (curvature) < 0.0001 then
-				local radius_good = mouse_local [2] >= -hit_radius and mouse_local [2] <= hit_radius
-				
-				local theta_good = mouse_local [1] >= 0 and mouse_local [1] <= arc.params.length
-				
-				if theta_good and radius_good then
-					color = selected_color
-				end
-			else
-				local radius = 1.0 / curvature
-				
-				local theta = math.atan2 (mouse_local [2] - radius, mouse_local [1]) + math.pi * 0.5
-				
-				if arc.params.total_theta < 0.0 then
-					theta = math.atan2 ((mouse_local [2] - radius), mouse_local [1]) - math.pi * 0.5
-				end
-				
-				local mouse_radius = math.sqrt (math.pow (mouse_local [1], 2.0) + math.pow (mouse_local [2] - radius, 2.0))
-				
-				local radius_good = mouse_radius <= math.abs (radius) + hit_radius and mouse_radius >= math.abs (radius) - hit_radius
-				
-				local theta_good = theta >= math.min (0.0, arc.params.total_theta) and theta <= math.max (0.0, arc.params.total_theta)
-				
-				if radius_good and theta_good then
-					color = selected_color
-				end
+			if pick_arc (arc, lastMouse) then
+				color = selected_color
 			end
 			
 			draw_arc (love.graphics, arc, color)
