@@ -386,7 +386,7 @@ end
 
 function love.mousepressed (x, y, button)
 	if button == 1 then
-		if tool == "append" then
+		if tool == "append" or tool == "add_expander" then
 			if arc then
 				table.insert (arcs, arc)
 				update_live_arc ()
