@@ -47,19 +47,11 @@ local function bend_arc_snap (mouse)
 	
 	local radius = math.sqrt (math.pow (mouse [1], 2.0) + math.pow (mouse [2], 2.0))
 	
-	--[[
-	local snapped_mouse = {
-		radius * math.cos (snapped_theta) + start [1],
-		radius * math.sin (snapped_theta) + start [2],
-	}
-	--]]
-	
 	local total_arc_theta = 2 * snapped_theta
 	
 	local num_segments = 8
 	local gran = num_segments * 3
 	
-	--local arc_length = math.floor (radius / gran) * gran
 	local arc_length = radius
 	
 	local arc_params = {
@@ -88,18 +80,6 @@ local function bend_expander (mouse)
 		num_segments = 4,
 		is_expander = true,
 	}
-	--[[
-	local lines = tesselate_arc (arc_params)
-	
-	for i = 1, #lines do
-		local mirr_i = #lines - i + 1
-		
-		table.insert (lines, {
-			mouse [1] - lines [mirr_i][1],
-			mouse [2] - lines [mirr_i][2],
-		})
-	end
-	--]]
 	
 	return {1.0, 0.0}, arc_params
 end
