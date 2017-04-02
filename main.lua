@@ -7,14 +7,19 @@ local track_radius = 10
 
 local tool = "select"
 
+local drag_start = {0, 0}
+local drag_data = nil
+
 local tools = {
 	['a'] = {"append", "(A)rc"},
 	['e'] = {'add_expander', "(E)xpander"},
+	['g'] = {"grab_points", "(G)rab point"},
 }
 
 local tool_order = {
 	"a",
-	"e"
+	"e",
+	"g",
 }
 
 local selected = {}
@@ -47,6 +52,7 @@ local function bend_arc_snap (mouse)
 	
 	local radius = math.sqrt (math.pow (mouse [1], 2.0) + math.pow (mouse [2], 2.0))
 	
+	--local total_arc_theta = 2 * theta
 	local total_arc_theta = 2 * snapped_theta
 	
 	local num_segments = 8
@@ -269,12 +275,18 @@ local function pick_arc_basis (arc, last_mouse)
 	return pick_arc (mouse_local, arc.params, segment_length)
 end
 
+local function mouse_in_circle (mouse, center, radius)
+	local distance_sq = math.pow (mouse [1] - center [1], 2.0) + math.pow (mouse [2] - center [2], 2.0)
+	
+	return distance_sq <= radius * radius
+end
+
 function love.draw ()
 	if tool == "append" or tool == "add_expander" then
 		for _, arc in ipairs (arcs) do
-			draw_arc (love.graphics, arc)
+			draw_arc (love.graphics, arc, {64, 64, 64})
 		end
-		draw_arc (love.graphics, arc, {120, 120, 120})
+		draw_arc (love.graphics, arc)
 		
 		if not arc and #arcs == 0 then
 			love.graphics.setColor (120, 120, 120)
@@ -282,6 +294,24 @@ function love.draw ()
 			
 			love.graphics.setColor (255, 64, 64)
 			love.graphics.line (lastMouse [1], lastMouse [2], lastMouse [1] + 16.0, lastMouse [2])
+		end
+	elseif tool == "grab_points" then
+		for _, arc in ipairs (arcs) do
+			draw_arc (love.graphics, arc, {64, 64, 64})
+		end
+		
+		for _, arc in ipairs (arcs) do
+			local color = {120, 120, 120}
+			
+			local center = arc.start.pos
+			local radius = track_radius + 2
+			
+			if mouse_in_circle (lastMouse, center, radius) then
+				color = {255, 64, 64}
+			end
+			
+			love.graphics.setColor (color)
+			love.graphics.circle ("line", center [1], center [2], radius)
 		end
 	elseif tool == "select" then
 		for _, arc in ipairs (arcs) do
@@ -346,7 +376,7 @@ function love.update (dt)
 			
 			arc.start.tangent = tangent
 			
-			arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent), arc.start.curvature)
+			arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent))
 		end
 	elseif tool == "add_expander" then
 		if arc then
@@ -355,6 +385,36 @@ function love.update (dt)
 			
 				arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent), "expander")
 			end
+		end
+	elseif tool == "grab_points" then
+		if love.mouse.isDown (1) then
+			local mouse_delta = {
+				x - drag_start [1],
+				y - drag_start [2],
+			}
+			
+			for _, i in ipairs (drag_data) do
+				local arc = arcs [i]
+				local prev_arc = arcs [i - 1]
+				local next_arc = arcs [i + 1]
+				
+				arc.start.pos = {
+					arc.start.pos [1] + mouse_delta [1],
+					arc.start.pos [2] + mouse_delta [2],
+				}
+				
+				if prev_arc then
+					prev_arc.stop.tangent, prev_arc.params = bend_arc_basis (prev_arc.start.pos, arc.start.pos, tangent_to_basis (prev_arc.start.tangent))
+					
+					arc.start.tangent = prev_arc.stop.tangent
+					
+					if next_arc then
+						arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, next_arc.start.pos, tangent_to_basis (arc.start.tangent))
+					end
+				end
+			end
+			
+			drag_start = {x, y}
 		end
 	end
 end
@@ -380,6 +440,8 @@ local function update_live_arc ()
 end
 
 function love.mousepressed (x, y, button)
+	drag_start = {x, y}
+	
 	if button == 1 then
 		if tool == "append" or tool == "add_expander" then
 			if arc then
@@ -394,6 +456,14 @@ function love.mousepressed (x, y, button)
 					stop = {},
 					params = nil,
 				}
+			end
+		elseif tool == "grab_points" then
+			drag_data = {}
+			
+			for i, arc in ipairs (arcs) do
+				if mouse_in_circle (drag_start, arc.start.pos, track_radius + 2) then
+					table.insert (drag_data, i)
+				end
 			end
 		end
 	elseif button == 2 then
@@ -437,7 +507,7 @@ function love.keypressed (key)
 		if next_tool then
 			tool = next_tool [1]
 		end
-	elseif tool == "append" then
+	elseif tool == "append" or tool == "add_expander" then
 		if key == "backspace" then
 			arcs [#arcs] = nil
 			arc = nil
