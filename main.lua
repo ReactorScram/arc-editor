@@ -9,12 +9,12 @@ local tool = "append"
 
 local tools = {
 	['d'] = {"append", "(D)raw"},
-	['f'] = {'nothing', "(F)ucking nothing"},
+	['e'] = {'add_expander', "(E)xpander"},
 }
 
 local tool_order = {
 	"d",
-	"f"
+	"e"
 }
 
 local selected = {}
@@ -38,6 +38,165 @@ local function from_basis (v, basis)
 		v [1] * basis.x [1] + v [2] * basis.y [1],
 		v [1] * basis.x [2] + v [2] * basis.y [2],
 	}
+end
+
+local function bend_arc_snap (mouse)
+	local theta = math.atan2 (mouse [2], mouse [1])
+	local theta_gran = 7.5
+	local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + theta_gran * 0.5) / theta_gran) * theta_gran) * math.pi / 180.0
+	
+	local radius = math.sqrt (math.pow (mouse [1], 2.0) + math.pow (mouse [2], 2.0))
+	
+	--[[
+	local snapped_mouse = {
+		radius * math.cos (snapped_theta) + start [1],
+		radius * math.sin (snapped_theta) + start [2],
+	}
+	--]]
+	
+	local total_arc_theta = 2 * snapped_theta
+	
+	local num_segments = 8
+	local gran = num_segments * 3
+	
+	local arc_length = math.floor (radius / gran) * gran
+	
+	local arc_params = {
+		total_theta = total_arc_theta,
+		length = arc_length,
+		num_segments = num_segments,
+	}
+	--local lines = tesselate_arc (arc_params)
+	local tangent = {math.cos (total_arc_theta), math.sin (total_arc_theta)}
+	
+	return tangent, arc_params
+end
+
+local function bend_expander (mouse)
+	local midpoint = {
+		mouse [1] * 0.5,
+		mouse [2] * 0.5,
+	}
+	
+	local theta = 2.0 * math.atan2 (mouse [2], mouse [1])
+	local length = 0.5 * math.sqrt (math.pow (mouse [1], 2.0) + math.pow (mouse [2], 2.0))
+	
+	local arc_params = {
+		total_theta = theta,
+		length = length,
+		num_segments = 4,
+		is_expander = true,
+	}
+	--[[
+	local lines = tesselate_arc (arc_params)
+	
+	for i = 1, #lines do
+		local mirr_i = #lines - i + 1
+		
+		table.insert (lines, {
+			mouse [1] - lines [mirr_i][1],
+			mouse [2] - lines [mirr_i][2],
+		})
+	end
+	--]]
+	
+	return {1.0, 0.0}, arc_params
+end
+
+local function bend_arc_basis (start, mouse, basis, type)
+	local local_mouse = into_basis ({mouse [1] - start [1], mouse [2] - start [2]}, basis)
+	
+	local tangent, arc_params
+	
+	if type == "expander" then
+		tangent, arc_params = bend_expander (local_mouse)
+	else
+		tangent, arc_params = bend_arc_snap (local_mouse)
+	end
+	
+	local tangent = from_basis (tangent, basis)
+	
+	return tangent, arc_params
+end
+
+local function tesselate_arc (p, offset)
+	local offset = offset or 0.0
+	
+	local points = {{0, 0}}
+	local normals = {{0, offset}}
+	
+	local curvature = p.total_theta / p.num_segments
+	local theta = 0.0
+	local last_point = {0.0, 0.0}
+	--local segment_length = p.length / p.num_segments
+	local segment_length = 1.0
+	for i = 1, p.num_segments do
+		local t = i / p.num_segments
+		local local_curvature = curvature
+		theta = theta + 0.5 * local_curvature * segment_length
+		local point = {
+			last_point [1] + segment_length * math.cos (theta),
+			last_point [2] + segment_length * math.sin (theta),
+		}
+		theta = theta + 0.5 * local_curvature * segment_length
+		
+		table.insert (points, point)
+		
+		if offset == 0.0 then
+			table.insert (normals, {0, 0})
+		else
+			local normal_theta = theta + 0.5 * math.pi
+			local normal = {
+				offset * math.cos (normal_theta),
+				offset * math.sin (normal_theta),
+			}
+			
+			table.insert (normals, normal)
+		end
+		last_point = point
+	end
+	
+	local effective_length = math.sqrt (math.pow (last_point [1], 2.0) + math.pow (last_point [2], 2.0))
+	
+	local scale = p.length / effective_length
+	
+	for i, v in ipairs (points) do
+		points [i] = {
+			v [1] * scale,
+			v [2] * scale,
+		}
+	end
+	
+	local lines = {}
+	
+	for i = 1, #points do
+		table.insert (lines, {
+			points [i][1] + normals [i][1],
+			points [i][2] + normals [i][2],
+		})
+	end
+	
+	if p.is_expander then
+		local original_count = #lines
+		local midpoint = points [original_count]
+		for i = 1, original_count do
+			local mirr_i = original_count - i + 1
+			
+			table.insert (lines, {
+				2.0 * midpoint [1] - points [mirr_i][1] + normals [mirr_i][1],
+				2.0 * midpoint [2] - points [mirr_i][2] + normals [mirr_i][2],
+			})
+		end
+	end
+	
+	return lines
+end
+
+local function tesselate_arc_basis (start, p, basis, offset)
+	return lume.map (tesselate_arc (p, offset), function (p)
+		local p2 = from_basis (p, basis)
+		return {p2 [1] + start [1], p2 [2] + start [2]}
+	end)
 end
 
 local function draw_arc (g, arc, color)
@@ -83,96 +242,8 @@ local function draw_arc (g, arc, color)
 	--g.line (arc.start.pos [1], 0, arc.start.pos [1], 600)
 end
 
-function bend_arc_basis (start, mouse, basis, start_curvature)
-	local local_mouse = into_basis ({mouse [1] - start [1], mouse [2] - start [2]}, basis)
-	
-	local a, arc_params = bend_arc (local_mouse, start_curvature)
-	
-	local tangent = from_basis (a, basis)
-	
-	return tangent, arc_params
-end
-
-function bend_arc (mouse, start_curvature)
-	local theta = math.atan2 (mouse [2], mouse [1])
-	local theta_gran = 7.5
-	local snapped_theta = (math.floor (((theta * 180.0 / math.pi) + theta_gran * 0.5) / theta_gran) * theta_gran) * math.pi / 180.0
-	
-	local radius = math.sqrt (math.pow (mouse [1], 2.0) + math.pow (mouse [2], 2.0))
-	
-	--[[
-	local snapped_mouse = {
-		radius * math.cos (snapped_theta) + start [1],
-		radius * math.sin (snapped_theta) + start [2],
-	}
-	--]]
-	
-	local total_arc_theta = 2 * snapped_theta
-	
-	local num_segments = 8
-	local gran = num_segments * 3
-	
-	local arc_length = math.floor (radius / gran) * gran
-	
-	local arc_params = {
-		total_theta = total_arc_theta,
-		length = arc_length,
-		num_segments = num_segments,
-	}
-	local lines = tesselate_arc (arc_params)
-	local tangent = {math.cos (total_arc_theta), math.sin (total_arc_theta)}
-	
-	return tangent, arc_params
-end
-
-function tesselate_arc_basis (start, p, basis, offset)
-	return lume.map (tesselate_arc (p, offset), function (p)
-		local p2 = from_basis (p, basis)
-		return {p2 [1] + start [1], p2 [2] + start [2]}
-	end)
-end
-
-function tesselate_arc (p, offset)
-	local offset = offset or 0.0
-	local lines = {
-		{0.0, offset},
-	}
-	
-	local curvature = p.total_theta / p.length
-	local theta = 0.0
-	local last_point = {0.0, 0.0}
-	local segment_length = p.length / p.num_segments
-	for i = 1, p.num_segments do
-		local t = i / p.num_segments
-		local local_curvature = curvature
-		theta = theta + 0.5 * local_curvature * segment_length
-		local point = {
-			last_point [1] + segment_length * math.cos (theta),
-			last_point [2] + segment_length * math.sin (theta),
-		}
-		theta = theta + 0.5 * local_curvature * segment_length
-		if offset == 0.0 then
-			table.insert (lines, point)
-		else
-			local normal_theta = theta + 0.5 * math.pi
-			local normal = {
-				offset * math.cos (normal_theta),
-				offset * math.sin (normal_theta),
-			}
-			
-			table.insert (lines, {
-				point [1] + normal [1],
-				point [2] + normal [2],
-			})
-		end
-		last_point = point
-	end
-	
-	return lines
-end
-
 function love.draw ()
-	if tool == "append" then
+	if tool == "append" or tool == "add_expander" then
 		for _, arc in ipairs (arcs) do
 			draw_arc (love.graphics, arc)
 		end
@@ -280,8 +351,15 @@ function love.update (dt)
 			
 			arc.start.tangent = tangent
 			
-			local gran = 5.0 / 16.0
 			arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (tangent), arc.start.curvature)
+		end
+	elseif tool == "add_expander" then
+		if arc then
+			if #arcs >= 1 then
+				arc.stop.tangent = arc.start.tangent
+			
+				arc.stop.tangent, arc.params = bend_arc_basis (arc.start.pos, {x, y}, tangent_to_basis (arc.start.tangent), "expander")
+			end
 		end
 	end
 end
@@ -302,22 +380,26 @@ local function update_live_arc ()
 			params = nil,
 		}
 	else
-		arc = {
-			start = {
-				pos = {x, y},
-				tangent = {1, 0},
-			},
-			stop = {},
-			params = nil,
-		}
+		arc = nil
 	end
 end
 
 function love.mousepressed (x, y, button)
 	if button == 1 then
 		if tool == "append" then
-			table.insert (arcs, arc)
-			update_live_arc ()
+			if arc then
+				table.insert (arcs, arc)
+				update_live_arc ()
+			else
+				arc = {
+					start = {
+						pos = {x, y},
+						tangent = {1, 0},
+					},
+					stop = {},
+					params = nil,
+				}
+			end
 		end
 	elseif button == 2 then
 		tool = "select"
@@ -359,6 +441,12 @@ function love.keypressed (key)
 		local next_tool = tools [key]
 		if next_tool then
 			tool = next_tool [1]
+		end
+	elseif tool == "append" then
+		if key == "backspace" then
+			arcs [#arcs] = nil
+			arc = nil
+			update_live_arc ()
 		end
 	end
 end
