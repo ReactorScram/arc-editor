@@ -443,7 +443,7 @@ function love.keypressed (key)
 	end
 	
 	if tool == "append" or tool == "add_expander" then
-		if key == "backspace" then
+		if key == "backspace" or key == "delete" then
 			arcs [#arcs] = nil
 			arc = nil
 			update_live_arc ()
